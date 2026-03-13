@@ -34,6 +34,13 @@ const getOAuth2Client = (req: Request) => {
 
 app.use(cookieParser());
 app.use(express.json());
+
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'minimal-todo-secret',
   resave: false,
@@ -100,6 +107,17 @@ app.get("/api/auth/google/callback", async (req, res) => {
 
 app.get("/api/auth/me", (req, res) => {
   res.json({ user: req.session.user || null });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    env: {
+      hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+      nodeEnv: process.env.NODE_ENV
+    }
+  });
 });
 
 app.post("/api/auth/logout", (req, res) => {

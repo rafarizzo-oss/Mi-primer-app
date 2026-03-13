@@ -60,6 +60,16 @@ export default function App() {
   };
 
   useEffect(() => {
+    const checkServer = async () => {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        console.log("Server Health:", data);
+      } catch (e) {
+        console.error("Server unreachable:", e);
+      }
+    };
+    checkServer();
     checkAuth();
   }, []);
 
@@ -98,7 +108,8 @@ export default function App() {
       }
     } catch (e) {
       console.error("Fallo al obtener la URL de auth", e);
-      alert("Error de conexión con el servidor. Inténtalo de nuevo.");
+      const errorMessage = e instanceof Error ? e.message : "Error desconocido";
+      alert(`Error de conexión con el servidor: ${errorMessage}. Por favor, verifica que la app esté corriendo y que no haya bloqueos de red.`);
     }
   };
 
