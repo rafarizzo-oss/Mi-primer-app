@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, CheckCircle2, Circle, ListTodo, Calendar as CalendarIcon, Clock, Bell, BellOff, X } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Circle, ListTodo, Calendar as CalendarIcon, Clock, Bell, BellOff, X, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Todo {
@@ -14,6 +14,13 @@ interface Todo {
   createdAt: number;
   dueDate?: string; // ISO string
   notified?: boolean;
+  synced?: boolean;
+}
+
+interface User {
+  name: string;
+  email: string;
+  picture: string;
 }
 
 type Filter = 'all' | 'active' | 'completed' | 'scheduled';
@@ -28,11 +35,54 @@ export default function App() {
   const [filter, setFilter] = useState<Filter>('all');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [activeNotification, setActiveNotification] = useState<Todo | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Persistence
   useEffect(() => {
     localStorage.setItem('minimal-todos', JSON.stringify(todos));
   }, [todos]);
+
+  // Auth Check
+  const checkAuth = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      setUser(data.user);
+    } catch (e) {
+      console.error("Auth check failed", e);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  // OAuth Success Listener
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        checkAuth();
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      const res = await fetch('/api/auth/google/url');
+      const { url } = await res.json();
+      window.open(url, 'google_auth', 'width=500,height=600');
+    } catch (e) {
+      console.error("Failed to get auth URL", e);
+    }
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setUser(null);
+  };
 
   // Notification Permission
   useEffect(() => {
@@ -48,7 +98,7 @@ export default function App() {
     }
   };
 
-  // Alarm Logic: Check every 10 seconds
+  // Alarm Logic
   const checkAlarms = useCallback(() => {
     const now = new Date();
     let updated = false;
@@ -57,15 +107,9 @@ export default function App() {
         const due = new Date(todo.dueDate);
         if (due <= now) {
           updated = true;
-          // Trigger in-app notification
           setActiveNotification(todo);
-          
-          // Trigger browser notification if permitted
           if (Notification.permission === "granted") {
-            new Notification("Recordatorio de Tarea", {
-              body: todo.text,
-              icon: "https://cdn-icons-png.flaticon.com/512/906/906334.png"
-            });
+            new Notification("Recordatorio de Tarea", { body: todo.text });
           }
           return { ...todo, notified: true };
         }
@@ -73,9 +117,7 @@ export default function App() {
       return todo;
     });
 
-    if (updated) {
-      setTodos(newTodos);
-    }
+    if (updated) setTodos(newTodos);
   }, [todos]);
 
   useEffect(() => {
@@ -83,7 +125,27 @@ export default function App() {
     return () => clearInterval(interval);
   }, [checkAlarms]);
 
-  const addTodo = (e: React.FormEvent) => {
+  const syncToGoogleCalendar = async (todo: Todo) => {
+    if (!user || !todo.dueDate || todo.synced) return;
+    
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/calendar/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: todo.text, dueDate: todo.dueDate }),
+      });
+      if (res.ok) {
+        setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, synced: true } : t));
+      }
+    } catch (e) {
+      console.error("Sync failed", e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const addTodo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim()) return;
 
@@ -94,11 +156,16 @@ export default function App() {
       createdAt: Date.now(),
       dueDate: dueDate || undefined,
       notified: false,
+      synced: false,
     };
 
     setTodos([newTodo, ...todos]);
     setInputValue('');
     setDueDate('');
+
+    if (newTodo.dueDate && user) {
+      await syncToGoogleCalendar(newTodo);
+    }
   };
 
   const toggleTodo = (id: string) => {
@@ -140,10 +207,7 @@ export default function App() {
                 <p className="text-sm font-medium">{activeNotification.text}</p>
               </div>
             </div>
-            <button 
-              onClick={() => setActiveNotification(null)}
-              className="p-2 hover:bg-white/10 rounded-full transition-colors"
-            >
+            <button onClick={() => setActiveNotification(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
               <X size={20} />
             </button>
           </motion.div>
@@ -151,6 +215,30 @@ export default function App() {
       </AnimatePresence>
 
       <div className="max-w-xl mx-auto px-6 py-20">
+        {/* User Profile / Login */}
+        <div className="flex justify-end mb-8">
+          {user ? (
+            <div className="flex items-center gap-3 bg-white p-2 pr-4 rounded-full shadow-sm border border-gray-100">
+              <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
+              <div className="text-left">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Conectado</p>
+                <p className="text-xs font-semibold">{user.name}</p>
+              </div>
+              <button onClick={handleLogout} className="ml-2 p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                <LogOut size={16} />
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={handleLogin}
+              className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-100 text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-colors"
+            >
+              <LogIn size={16} />
+              Entrar con Google
+            </button>
+          )}
+        </div>
+
         {/* Header */}
         <header className="mb-12 flex items-end justify-between">
           <div>
@@ -169,7 +257,6 @@ export default function App() {
             <button 
               onClick={requestNotificationPermission}
               className={`p-2 rounded-full transition-all ${notificationsEnabled ? 'text-emerald-500 bg-emerald-50' : 'text-gray-300 hover:text-gray-400 bg-gray-100'}`}
-              title={notificationsEnabled ? "Notificaciones activadas" : "Activar notificaciones"}
             >
               {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
             </button>
@@ -203,10 +290,11 @@ export default function App() {
             </div>
             <button
               type="submit"
-              className="p-2 bg-black text-white rounded-xl hover:scale-105 active:scale-95 transition-transform flex items-center gap-2 px-4 py-2"
+              disabled={isSyncing}
+              className="p-2 bg-black text-white rounded-xl hover:scale-105 active:scale-95 transition-transform flex items-center gap-2 px-4 py-2 disabled:opacity-50"
             >
-              <Plus size={18} />
-              <span className="text-xs font-bold uppercase tracking-widest">Añadir</span>
+              {isSyncing ? <RefreshCw size={18} className="animate-spin" /> : <Plus size={18} />}
+              <span className="text-xs font-bold uppercase tracking-widest">{isSyncing ? 'Sincronizando...' : 'Añadir'}</span>
             </button>
           </div>
         </form>
@@ -218,9 +306,7 @@ export default function App() {
               key={f}
               onClick={() => setFilter(f)}
               className={`whitespace-nowrap px-4 py-2 rounded-2xl text-xs font-bold uppercase tracking-widest transition-all ${
-                filter === f 
-                  ? 'bg-black text-white shadow-lg shadow-black/10' 
-                  : 'bg-white text-gray-400 hover:text-gray-600 border border-gray-100'
+                filter === f ? 'bg-black text-white shadow-lg' : 'bg-white text-gray-400 border border-gray-100'
               }`}
             >
               {f === 'all' ? 'Todas' : f === 'active' ? 'Activas' : f === 'completed' ? 'Hechas' : 'Programadas'}
@@ -235,71 +321,43 @@ export default function App() {
               <motion.div
                 key={todo.id}
                 layout
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
                 className="group bg-white rounded-2xl p-5 flex items-start gap-4 shadow-sm hover:shadow-md transition-all border border-gray-100"
               >
-                <button
-                  onClick={() => toggleTodo(todo.id)}
-                  className={`mt-1 transition-colors ${todo.completed ? 'text-emerald-500' : 'text-gray-200 hover:text-gray-400'}`}
-                >
+                <button onClick={() => toggleTodo(todo.id)} className={`mt-1 transition-colors ${todo.completed ? 'text-emerald-500' : 'text-gray-200 hover:text-gray-400'}`}>
                   {todo.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
                 </button>
                 
                 <div className="flex-1 min-w-0">
-                  <p className={`text-lg leading-tight transition-all duration-300 ${
-                    todo.completed ? 'text-gray-300 line-through' : 'text-gray-700'
-                  }`}>
+                  <p className={`text-lg leading-tight transition-all duration-300 ${todo.completed ? 'text-gray-300 line-through' : 'text-gray-700'}`}>
                     {todo.text}
                   </p>
                   
                   {todo.dueDate && (
-                    <div className={`flex items-center gap-1.5 mt-2 text-[10px] font-bold uppercase tracking-widest ${
-                      new Date(todo.dueDate) < new Date() && !todo.completed ? 'text-red-400' : 'text-gray-400'
-                    }`}>
-                      <Clock size={12} />
-                      <span>
-                        {new Date(todo.dueDate).toLocaleString('es-ES', { 
-                          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
-                        })}
-                      </span>
-                      {todo.notified && !todo.completed && (
-                        <span className="ml-2 bg-red-50 text-red-500 px-1.5 py-0.5 rounded">¡Vencida!</span>
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${new Date(todo.dueDate) < new Date() && !todo.completed ? 'text-red-400' : 'text-gray-400'}`}>
+                        <Clock size={12} />
+                        <span>{new Date(todo.dueDate).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      {todo.synced && (
+                        <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded">
+                          <CalendarIcon size={10} />
+                          Sincronizado
+                        </div>
                       )}
                     </div>
                   )}
                 </div>
 
-                <button
-                  onClick={() => deleteTodo(todo.id)}
-                  className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                >
+                <button onClick={() => deleteTodo(todo.id)} className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
                   <Trash2 size={18} />
                 </button>
               </motion.div>
             ))}
           </AnimatePresence>
-
-          {filteredTodos.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="py-20 text-center"
-            >
-              <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <ListTodo className="text-gray-300" size={24} />
-              </div>
-              <p className="text-gray-400 font-medium">No hay tareas en esta sección</p>
-            </motion.div>
-          )}
         </div>
-
-        {/* Footer info */}
-        <footer className="mt-20 pt-8 border-t border-gray-200 flex justify-between items-center text-[10px] uppercase tracking-widest text-gray-400 font-bold">
-          <span>Minimalist Todo App</span>
-          <span>{todos.length} tareas en total</span>
-        </footer>
       </div>
     </div>
   );
