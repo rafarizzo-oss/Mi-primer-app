@@ -87,14 +87,33 @@ export default function App() {
   const handleLogin = async () => {
     console.log("Iniciando login...");
     try {
-      const res = await fetch('/api/auth/google/url');
+      // Intento de obtener la URL con reintentos básicos
+      let res;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          res = await fetch('/api/auth/google/url');
+          if (res.ok) break;
+        } catch (e) {
+          console.warn(`Intento ${attempts + 1} fallido, reintentando...`);
+        }
+        attempts++;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+
+      if (!res || !res.ok) {
+        throw new Error(`No se pudo contactar con el servidor tras ${maxAttempts} intentos.`);
+      }
+
       console.log("Respuesta del servidor (status):", res.status);
       
       const contentType = res.headers.get("content-type");
       if (contentType && !contentType.includes("application/json")) {
         const text = await res.text();
-        console.error("Respuesta no es JSON:", text.substring(0, 100));
-        throw new Error(`El servidor respondió con HTML en lugar de JSON (Status: ${res.status}). Esto suele significar que la ruta no existe o el servidor no está listo.`);
+        console.error("Respuesta no es JSON:", text.substring(0, 200));
+        throw new Error("El servidor aún no está listo o la ruta es incorrecta (respondió con HTML). Por favor, espera unos segundos y refresca la página.");
       }
 
       const data = await res.json();

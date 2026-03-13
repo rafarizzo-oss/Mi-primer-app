@@ -18,11 +18,21 @@ declare module 'express-session' {
 
 // OAuth2 Client Helper
 const getOAuth2Client = (req: Request) => {
-  const protocol = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${protocol}://${host}/api/auth/google/callback`;
+  // Prefer APP_URL from environment if available
+  let baseUrl = process.env.APP_URL;
   
-  console.log(`[AUTH] OAuth Config - Protocol: ${protocol}, Host: ${host}, RedirectURI: ${redirectUri}`);
+  if (!baseUrl) {
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    baseUrl = `${protocol}://${host}`;
+  }
+
+  // Remove trailing slash if present
+  baseUrl = baseUrl.replace(/\/$/, "");
+
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl}/api/auth/google/callback`;
+  
+  console.log(`[AUTH] OAuth Config - BaseURL: ${baseUrl}, RedirectURI: ${redirectUri}`);
 
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -61,7 +71,7 @@ async function startServer() {
     }
   }));
 
-  // --- API ROUTES ---
+  // --- API ROUTES FIRST ---
   const api = express.Router();
 
   api.get("/health", (req, res) => {
