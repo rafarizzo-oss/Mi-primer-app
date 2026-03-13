@@ -37,6 +37,7 @@ export default function App() {
   const [activeNotification, setActiveNotification] = useState<Todo | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   // Persistence
   useEffect(() => {
@@ -47,10 +48,14 @@ export default function App() {
   const checkAuth = async () => {
     try {
       const res = await fetch('/api/auth/me');
+      if (!res.ok) throw new Error('Auth request failed');
       const data = await res.json();
       setUser(data.user);
     } catch (e) {
       console.error("Auth check failed", e);
+      setUser(null);
+    } finally {
+      setIsLoadingAuth(false);
     }
   };
 
@@ -217,7 +222,9 @@ export default function App() {
       <div className="max-w-xl mx-auto px-6 py-20">
         {/* User Profile / Login */}
         <div className="flex justify-end mb-8">
-          {user ? (
+          {isLoadingAuth ? (
+            <div className="w-32 h-10 bg-gray-100 animate-pulse rounded-full" />
+          ) : user ? (
             <div className="flex items-center gap-3 bg-white p-2 pr-4 rounded-full shadow-sm border border-gray-100">
               <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
               <div className="text-left">
