@@ -88,6 +88,15 @@ export default function App() {
     console.log("Iniciando login...");
     try {
       const res = await fetch('/api/auth/google/url');
+      console.log("Respuesta del servidor (status):", res.status);
+      
+      const contentType = res.headers.get("content-type");
+      if (contentType && !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("Respuesta no es JSON:", text.substring(0, 100));
+        throw new Error(`El servidor respondió con HTML en lugar de JSON (Status: ${res.status}). Esto suele significar que la ruta no existe o el servidor no está listo.`);
+      }
+
       const data = await res.json();
       
       if (data.error) {

@@ -16,9 +16,6 @@ declare module 'express-session' {
   }
 }
 
-const app = express();
-const PORT = 3000;
-
 // OAuth2 Client Helper
 const getOAuth2Client = (req: Request) => {
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
@@ -33,15 +30,19 @@ const getOAuth2Client = (req: Request) => {
 };
 
 async function startServer() {
+  console.log("Starting server process...");
   const app = express();
   const PORT = 3000;
+
+  // Trust proxy is important for secure cookies behind AI Studio proxy
+  app.set('trust proxy', 1);
 
   app.use(cookieParser());
   app.use(express.json());
 
   // Request Logger
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log(`[SERVER] ${new Date().toISOString()} - ${req.method} ${req.url}`);
     next();
   });
 
@@ -49,7 +50,7 @@ async function startServer() {
     secret: process.env.SESSION_SECRET || 'minimal-todo-secret',
     resave: false,
     saveUninitialized: true,
-    proxy: true, // Required for secure cookies behind a proxy
+    proxy: true,
     cookie: { 
       secure: true, 
       sameSite: 'none',
@@ -57,23 +58,27 @@ async function startServer() {
     }
   }));
 
-  // --- API Routes ---
-  
-  app.get("/api/health", (req, res) => {
+  // --- API Router ---
+  const apiRouter = express.Router();
+
+  apiRouter.get("/health", (req, res) => {
+    console.log("Health check requested");
     res.json({ 
       status: "ok", 
+      time: new Date().toISOString(),
       env: {
         hasClientId: !!process.env.GOOGLE_CLIENT_ID,
-        hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-        nodeEnv: process.env.NODE_ENV
+        hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET
       }
     });
   });
 
-  app.get("/api/auth/google/url", (req, res) => {
+  apiRouter.get("/auth/google/url", (req, res) => {
+    console.log("Generating Google Auth URL...");
     try {
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-        return res.status(500).json({ error: "Faltan las credenciales GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET en los Secrets de AI Studio." });
+        console.error("Missing credentials in env");
+        return res.status(500).json({ error: "Faltan las credenciales GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET." });
       }
       const client = getOAuth2Client(req);
       const url = client.generateAuthUrl({
@@ -92,7 +97,8 @@ async function startServer() {
     }
   });
 
-  app.get("/api/auth/google/callback", async (req, res) => {
+  apiRouter.get("/auth/google/callback", async (req, res) => {
+    console.log("Google Auth Callback received");
     const { code } = req.query;
     const client = getOAuth2Client(req);
     try {
@@ -125,28 +131,25 @@ async function startServer() {
     }
   });
 
-  app.get("/api/auth/me", (req, res) => {
+  apiRouter.get("/auth/me", (req, res) => {
     res.json({ user: req.session.user || null });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  apiRouter.post("/auth/logout", (req, res) => {
     req.session.destroy(() => {
       res.json({ success: true });
     });
   });
 
-  app.post("/api/calendar/sync", async (req, res) => {
+  apiRouter.post("/calendar/sync", async (req, res) => {
     const tokens = req.session.tokens;
     if (!tokens) return res.status(401).json({ error: "No autenticado" });
 
     const { text, dueDate } = req.body;
-    if (!dueDate) return res.status(400).json({ error: "Fecha requerida" });
-
     try {
       const client = getOAuth2Client(req);
       client.setCredentials(tokens);
       const calendar = google.calendar({ version: 'v3', auth: client });
-      
       const start = new Date(dueDate);
       const end = new Date(start.getTime() + 30 * 60000);
 
@@ -159,7 +162,6 @@ async function startServer() {
           end: { dateTime: end.toISOString() },
         },
       });
-
       res.json({ success: true });
     } catch (error) {
       console.error("Error syncing with calendar:", error);
@@ -167,9 +169,16 @@ async function startServer() {
     }
   });
 
-  // --- End of API Routes ---
+  // Mount API router
+  app.use("/api", apiRouter);
 
-  if (process.env.NODE_ENV !== "production") {
+  // API 404 Handler
+  app.use("/api/*", (req, res) => {
+    console.log(`[API 404] ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ error: `Ruta de API no encontrada: ${req.originalUrl}` });
+  });
+
+  // --- Static / Vite Middleware ---
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
