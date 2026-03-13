@@ -75,12 +75,30 @@ export default function App() {
   }, []);
 
   const handleLogin = async () => {
+    console.log("Iniciando login...");
     try {
       const res = await fetch('/api/auth/google/url');
-      const { url } = await res.json();
-      window.open(url, 'google_auth', 'width=500,height=600');
+      const data = await res.json();
+      
+      if (data.error) {
+        console.error("Error del servidor:", data.error);
+        alert(`Error: ${data.error}. Revisa que hayas configurado GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Settings > Secrets.`);
+        return;
+      }
+
+      if (!data.url) {
+        throw new Error("No se recibió la URL de autenticación");
+      }
+
+      console.log("Abriendo ventana de Google...");
+      const popup = window.open(data.url, 'google_auth', 'width=500,height=600');
+      
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        alert("El navegador bloqueó la ventana emergente. Por favor, permite las ventanas emergentes para este sitio.");
+      }
     } catch (e) {
-      console.error("Failed to get auth URL", e);
+      console.error("Fallo al obtener la URL de auth", e);
+      alert("Error de conexión con el servidor. Inténtalo de nuevo.");
     }
   };
 
