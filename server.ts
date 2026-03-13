@@ -30,18 +30,18 @@ const getOAuth2Client = (req: Request) => {
 };
 
 async function startServer() {
-  console.log("--- Starting Server ---");
+  console.log("--- INICIANDO SERVIDOR ---");
   console.log("NODE_ENV:", process.env.NODE_ENV);
   
   const app = express();
   const PORT = 3000;
 
-  // Trust proxy is important for secure cookies behind AI Studio proxy
+  // Trust proxy para cookies seguros tras el proxy de AI Studio
   app.set('trust proxy', 1);
 
-  // LOGGING MIDDLEWARE - MUST BE FIRST
+  // Middleware de logging para depuración
   app.use((req, res, next) => {
-    console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.url} (Path: ${req.path})`);
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
   });
 
@@ -60,27 +60,18 @@ async function startServer() {
     }
   }));
 
-  // --- API Router ---
-  const apiRouter = express.Router();
-
-  apiRouter.get("/health", (req, res) => {
-    console.log("Health check requested");
-    res.json({ 
-      status: "ok", 
-      time: new Date().toISOString(),
-      env: {
-        hasClientId: !!process.env.GOOGLE_CLIENT_ID,
-        hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET
-      }
-    });
+  // --- RUTAS DE LA API ---
+  // Las definimos directamente en 'app' para evitar problemas con routers
+  
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", message: "API is alive" });
   });
 
-  apiRouter.get("/auth/google/url", (req, res) => {
-    console.log("Generating Google Auth URL...");
+  app.get("/api/auth/google/url", (req, res) => {
+    console.log("Generando URL de Google Auth...");
     try {
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-        console.error("Missing credentials in env");
-        return res.status(500).json({ error: "Faltan las credenciales GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET." });
+        return res.status(500).json({ error: "Faltan credenciales de Google en el servidor." });
       }
       const client = getOAuth2Client(req);
       const url = client.generateAuthUrl({
@@ -94,13 +85,12 @@ async function startServer() {
       });
       res.json({ url });
     } catch (error) {
-      console.error("Error generating auth URL:", error);
-      res.status(500).json({ error: "Error interno al generar la URL de Google" });
+      console.error("Error en /api/auth/google/url:", error);
+      res.status(500).json({ error: "Error interno al generar la URL" });
     }
   });
 
-  apiRouter.get("/auth/google/callback", async (req, res) => {
-    console.log("Google Auth Callback received");
+  app.get("/api/auth/google/callback", async (req, res) => {
     const { code } = req.query;
     const client = getOAuth2Client(req);
     try {
@@ -123,27 +113,27 @@ async function startServer() {
                 window.location.href = '/';
               }
             </script>
-            <p>Autenticación exitosa. Esta ventana se cerrará automáticamente.</p>
+            <p>Autenticación exitosa. Cerrando ventana...</p>
           </body>
         </html>
       `);
     } catch (error) {
-      console.error("Error exchanging code for tokens:", error);
+      console.error("Error en callback:", error);
       res.status(500).send("Error de autenticación");
     }
   });
 
-  apiRouter.get("/auth/me", (req, res) => {
+  app.get("/api/auth/me", (req, res) => {
     res.json({ user: req.session.user || null });
   });
 
-  apiRouter.post("/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", (req, res) => {
     req.session.destroy(() => {
       res.json({ success: true });
     });
   });
 
-  apiRouter.post("/calendar/sync", async (req, res) => {
+  app.post("/api/calendar/sync", async (req, res) => {
     const tokens = req.session.tokens;
     if (!tokens) return res.status(401).json({ error: "No autenticado" });
 
@@ -166,28 +156,26 @@ async function startServer() {
       });
       res.json({ success: true });
     } catch (error) {
-      console.error("Error syncing with calendar:", error);
+      console.error("Error en sync:", error);
       res.status(500).json({ error: "Error al sincronizar con Google Calendar" });
     }
   });
 
-  // Mount API router
-  app.use("/api", apiRouter);
-
-  // API 404 Handler - prevents HTML from being served for missing API routes
+  // Manejador de 404 para cualquier otra ruta de API
   app.all("/api/*", (req, res) => {
-    console.log(`[API 404] ${req.method} ${req.url}`);
     res.status(404).json({ error: `Ruta de API no encontrada: ${req.url}` });
   });
 
-  // --- Static / Vite Middleware ---
+  // --- VITE / STATIC FILES ---
   if (process.env.NODE_ENV !== "production") {
+    console.log("Iniciando Vite en modo middleware...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    console.log("Sirviendo archivos estáticos desde dist/...");
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -196,8 +184,10 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Servidor escuchando en http://0.0.0.0:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("ERROR FATAL AL INICIAR EL SERVIDOR:", err);
+});
