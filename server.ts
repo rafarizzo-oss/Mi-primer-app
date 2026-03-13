@@ -30,21 +30,23 @@ const getOAuth2Client = (req: Request) => {
 };
 
 async function startServer() {
-  console.log("Starting server process...");
+  console.log("--- Starting Server ---");
+  console.log("NODE_ENV:", process.env.NODE_ENV);
+  
   const app = express();
   const PORT = 3000;
 
   // Trust proxy is important for secure cookies behind AI Studio proxy
   app.set('trust proxy', 1);
 
-  app.use(cookieParser());
-  app.use(express.json());
-
-  // Request Logger
+  // LOGGING MIDDLEWARE - MUST BE FIRST
   app.use((req, res, next) => {
-    console.log(`[SERVER] ${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.url} (Path: ${req.path})`);
     next();
   });
+
+  app.use(cookieParser());
+  app.use(express.json());
 
   app.use(session({
     secret: process.env.SESSION_SECRET || 'minimal-todo-secret',
@@ -172,14 +174,14 @@ async function startServer() {
   // Mount API router
   app.use("/api", apiRouter);
 
-  // API 404 Handler
-  app.use("/api/*", (req, res) => {
-    console.log(`[API 404] ${req.method} ${req.originalUrl}`);
-    res.status(404).json({ error: `Ruta de API no encontrada: ${req.originalUrl}` });
+  // API 404 Handler - prevents HTML from being served for missing API routes
+  app.all("/api/*", (req, res) => {
+    console.log(`[API 404] ${req.method} ${req.url}`);
+    res.status(404).json({ error: `Ruta de API no encontrada: ${req.url}` });
   });
 
   // --- Static / Vite Middleware ---
-    const vite = await createViteServer({
+  if (process.env.NODE_ENV !== "production") {
       server: { middlewareMode: true },
       appType: "spa",
     });
