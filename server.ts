@@ -47,6 +47,10 @@ app.use(session({
 
 // Auth Routes
 app.get("/api/auth/google/url", (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
+    return res.status(500).json({ error: "Configuración de Google incompleta" });
+  }
   const client = getOAuth2Client(req);
   const url = client.generateAuthUrl({
     access_type: "offline",
