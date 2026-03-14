@@ -113,15 +113,14 @@ export default function App() {
       if (contentType && !contentType.includes("application/json")) {
         const text = await res.text();
         console.error("Respuesta no es JSON:", text.substring(0, 200));
-        throw new Error("El servidor aún no está listo o la ruta es incorrecta (respondió con HTML). Por favor, espera unos segundos y refresca la página.");
+        throw new Error(`El servidor respondió con HTML (Status: ${res.status}). Esto suele significar que la ruta no existe o el servidor está reiniciando. Por favor, espera 10 segundos y vuelve a intentarlo.`);
       }
 
       const data = await res.json();
       
       if (data.error) {
         console.error("Error del servidor:", data.error);
-        alert(`Error: ${data.error}. Revisa que hayas configurado GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Settings > Secrets.`);
-        return;
+        throw new Error(data.error);
       }
 
       if (!data.url) {

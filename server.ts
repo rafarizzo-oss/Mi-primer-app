@@ -18,10 +18,18 @@ declare module 'express-session' {
 
 // OAuth2 Client Helper
 const getOAuth2Client = (req: Request) => {
-  const protocol = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const baseUrl = `${protocol}://${host}`;
+  // Prefer APP_URL from environment if available
+  let baseUrl = process.env.APP_URL;
   
+  if (!baseUrl) {
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    baseUrl = `${protocol}://${host}`;
+  }
+
+  // Remove trailing slash if present
+  baseUrl = baseUrl.replace(/\/$/, "");
+
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl}/api/auth/google/callback`;
   
   console.log(`[AUTH] OAuth Config - BaseURL: ${baseUrl}, RedirectURI: ${redirectUri}`);
@@ -71,6 +79,7 @@ async function startServer() {
   });
 
   api.get("/auth/google/url", (req, res) => {
+    console.log("Petición a /api/auth/google/url");
     try {
       const client = getOAuth2Client(req);
       const url = client.generateAuthUrl({
@@ -90,6 +99,7 @@ async function startServer() {
   });
 
   api.get("/auth/google/callback", async (req, res) => {
+    console.log("Petición a /api/auth/google/callback");
     const { code } = req.query;
     if (!code) return res.status(400).send("No code");
 
@@ -162,20 +172,28 @@ async function startServer() {
     }
   });
 
-  // Mount API
+  // Mount API Router BEFORE static/vite
   app.use("/api", api);
 
   // --- STATIC / VITE ---
   if (process.env.NODE_ENV !== "production") {
+    console.log("Iniciando Vite en modo desarrollo...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    console.log("Sirviendo archivos estáticos en modo producción...");
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    
+    // Catch-all: Solo sirve index.html si NO es una ruta de API
     app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/')) {
+        console.log(`[API 404] ${req.method} ${req.path}`);
+        return res.status(404).json({ error: "API route not found" });
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
