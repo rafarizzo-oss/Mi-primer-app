@@ -1,16 +1,12 @@
 import express, { Request, Response } from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import { google } from "googleapis";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Extend session type
 declare module 'express-session' {
@@ -22,7 +18,6 @@ declare module 'express-session' {
 
 // OAuth2 Client Helper
 const getOAuth2Client = (req: Request) => {
-  // En producción, usamos el host de la petición para mayor precisión
   const protocol = req.headers['x-forwarded-proto'] || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   const baseUrl = `${protocol}://${host}`;
@@ -47,7 +42,7 @@ async function startServer() {
 
   app.set('trust proxy', 1);
 
-  // Logger global
+  // Logger
   app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
@@ -68,18 +63,15 @@ async function startServer() {
     }
   }));
 
-  // --- RUTAS DE LA API (DEFINIDAS DIRECTAMENTE EN APP PARA MÁXIMA COMPATIBILIDAD) ---
-  
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "API is operational" });
+  // --- API ROUTES ---
+  const api = express.Router();
+
+  api.get("/health", (req, res) => {
+    res.json({ status: "ok" });
   });
 
-  app.get("/api/auth/google/url", (req, res) => {
-    console.log("Petición a /api/auth/google/url");
+  api.get("/auth/google/url", (req, res) => {
     try {
-      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-        return res.status(500).json({ error: "Faltan credenciales de Google." });
-      }
       const client = getOAuth2Client(req);
       const url = client.generateAuthUrl({
         access_type: "offline",
@@ -93,11 +85,11 @@ async function startServer() {
       res.json({ url });
     } catch (error) {
       console.error("Error generating auth URL:", error);
-      res.status(500).json({ error: "Error interno" });
+      res.status(500).json({ error: "Internal Server Error" });
     }
   });
 
-  app.get("/api/auth/google/callback", async (req, res) => {
+  api.get("/auth/google/callback", async (req, res) => {
     const { code } = req.query;
     if (!code) return res.status(400).send("No code");
 
@@ -128,23 +120,23 @@ async function startServer() {
       `);
     } catch (error) {
       console.error("Error in callback:", error);
-      res.status(500).send("Error de autenticación");
+      res.status(500).send("Authentication Error");
     }
   });
 
-  app.get("/api/auth/me", (req, res) => {
+  api.get("/auth/me", (req, res) => {
     res.json({ user: req.session.user || null });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  api.post("/auth/logout", (req, res) => {
     req.session.destroy(() => {
       res.json({ success: true });
     });
   });
 
-  app.post("/api/calendar/sync", async (req, res) => {
+  api.post("/calendar/sync", async (req, res) => {
     const tokens = req.session.tokens;
-    if (!tokens) return res.status(401).json({ error: "No autenticado" });
+    if (!tokens) return res.status(401).json({ error: "Unauthorized" });
 
     const { text, dueDate } = req.body;
     try {
@@ -166,29 +158,24 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       console.error("Error syncing:", error);
-      res.status(500).json({ error: "Error de sincronización" });
+      res.status(500).json({ error: "Sync Error" });
     }
   });
 
-  // --- MANEJO DE ARCHIVOS ESTÁTICOS Y SPA ---
-  
+  // Mount API
+  app.use("/api", api);
+
+  // --- STATIC / VITE ---
   if (process.env.NODE_ENV !== "production") {
-    console.log("Modo Desarrollo: Iniciando Vite...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    console.log("Modo Producción: Sirviendo archivos de dist/...");
-    const distPath = path.resolve(__dirname, 'dist');
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    
-    // Catch-all para SPA, pero ignorando rutas de API que no existan
-    app.get('*', (req, res, next) => {
-      if (req.url.startsWith('/api/')) {
-        return res.status(404).json({ error: "API endpoint not found" });
-      }
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
@@ -199,5 +186,5 @@ async function startServer() {
 }
 
 startServer().catch(err => {
-  console.error("ERROR CRÍTICO:", err);
+  console.error("FATAL ERROR:", err);
 });
