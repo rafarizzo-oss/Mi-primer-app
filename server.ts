@@ -6,12 +6,12 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 
 // Import API handlers
-import healthHandler from "./api/health.js";
-import googleUrlHandler from "./api/auth/google/url.js";
-import googleCallbackHandler from "./api/auth/google/callback.js";
-import meHandler from "./api/auth/me.js";
-import logoutHandler from "./api/auth/logout.js";
-import syncHandler from "./api/calendar/sync.js";
+import healthHandler from "./api/health.ts";
+import googleUrlHandler from "./api/auth/google/url.ts";
+import googleCallbackHandler from "./api/auth/google/callback.ts";
+import meHandler from "./api/auth/me.ts";
+import logoutHandler from "./api/auth/logout.ts";
+import syncHandler from "./api/calendar/sync.ts";
 
 dotenv.config();
 

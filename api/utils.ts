@@ -2,6 +2,13 @@ import { Request } from 'express';
 import { google } from 'googleapis';
 
 export const getOAuth2Client = (req: Request) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error("MISSING_CREDENTIALS: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is not defined in environment variables.");
+  }
+
   let baseUrl = process.env.APP_URL;
   
   if (!baseUrl) {
