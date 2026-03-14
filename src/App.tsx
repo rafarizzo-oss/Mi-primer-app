@@ -112,8 +112,9 @@ export default function App() {
       const contentType = res.headers.get("content-type");
       if (contentType && !contentType.includes("application/json")) {
         const text = await res.text();
-        console.error("Respuesta no es JSON:", text.substring(0, 200));
-        throw new Error(`El servidor respondió con HTML (Status: ${res.status}). Esto suele significar que la ruta no existe o el servidor está reiniciando. Por favor, espera 10 segundos y vuelve a intentarlo.`);
+        console.error("Respuesta no es JSON:", text.substring(0, 500));
+        const snippet = text.substring(0, 100).replace(/</g, "&lt;");
+        throw new Error(`El servidor respondió con HTML (Status: ${res.status}). Snippet: ${snippet}... Esto suele significar que la ruta no existe o el servidor está reiniciando. Por favor, espera 10 segundos y vuelve a intentarlo.`);
       }
 
       const data = await res.json();
