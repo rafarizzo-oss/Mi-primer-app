@@ -52,7 +52,7 @@ async function startServer() {
 
   // Logger
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Path: ${req.path}`);
     next();
   });
 
@@ -71,15 +71,13 @@ async function startServer() {
     }
   }));
 
-  // --- API ROUTES ---
-  const api = express.Router();
-
-  api.get("/health", (req, res) => {
+  // --- API ROUTES (TOP PRIORITY) ---
+  app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
 
-  api.get("/auth/google/url", (req, res) => {
-    console.log("Petición a /api/auth/google/url");
+  app.get("/api/auth/google/url", (req, res) => {
+    console.log(`[API] HIT: /api/auth/google/url`);
     try {
       const client = getOAuth2Client(req);
       const url = client.generateAuthUrl({
@@ -98,8 +96,8 @@ async function startServer() {
     }
   });
 
-  api.get("/auth/google/callback", async (req, res) => {
-    console.log("Petición a /api/auth/google/callback");
+  app.get("/api/auth/google/callback", async (req, res) => {
+    console.log("[API] HIT: /api/auth/google/callback");
     const { code } = req.query;
     if (!code) return res.status(400).send("No code");
 
@@ -134,17 +132,17 @@ async function startServer() {
     }
   });
 
-  api.get("/auth/me", (req, res) => {
+  app.get("/api/auth/me", (req, res) => {
     res.json({ user: req.session.user || null });
   });
 
-  api.post("/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", (req, res) => {
     req.session.destroy(() => {
       res.json({ success: true });
     });
   });
 
-  api.post("/calendar/sync", async (req, res) => {
+  app.post("/api/calendar/sync", async (req, res) => {
     const tokens = req.session.tokens;
     if (!tokens) return res.status(401).json({ error: "Unauthorized" });
 
@@ -172,9 +170,6 @@ async function startServer() {
     }
   });
 
-  // Mount API Router BEFORE static/vite
-  app.use("/api", api);
-
   // --- STATIC / VITE ---
   if (process.env.NODE_ENV !== "production") {
     console.log("Iniciando Vite en modo desarrollo...");
@@ -188,8 +183,9 @@ async function startServer() {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     
-    // Catch-all: Solo sirve index.html si NO es una ruta de API
+    // Catch-all para SPA
     app.get('*', (req, res) => {
+      // Si llegamos aquí y empieza por /api/, es que no se encontró la ruta
       if (req.path.startsWith('/api/')) {
         console.log(`[API 404] ${req.method} ${req.path}`);
         return res.status(404).json({ error: "API route not found" });
