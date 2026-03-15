@@ -120,8 +120,8 @@ export default function App() {
       const data = await res.json();
       
       if (data.error) {
-        console.error("Error del servidor:", data.error);
-        throw new Error(data.error);
+        console.error("Error del servidor:", data.error, data.details);
+        throw new Error(`${data.error}: ${data.details || ''}`);
       }
 
       if (!data.url) {

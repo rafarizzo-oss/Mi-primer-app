@@ -16,12 +16,12 @@ export default function handler(req: Request, res: Response) {
     res.json({ url });
   } catch (error: any) {
     console.error("Error generating auth URL:", error);
-    if (error.message?.includes("MISSING_CREDENTIALS")) {
-      return res.status(500).json({ 
-        error: "Configuración incompleta", 
-        details: "Faltan GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET en las variables de entorno de Vercel." 
-      });
-    }
-    res.status(500).json({ error: "Internal Server Error" });
+    const isMissing = error.message?.includes("MISSING_CREDENTIALS");
+    res.status(500).json({ 
+      error: isMissing ? "Configuración incompleta" : "Error de autenticación", 
+      details: isMissing 
+        ? "Faltan GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET en Vercel." 
+        : error.message || "Error desconocido"
+    });
   }
 }
