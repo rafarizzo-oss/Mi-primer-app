@@ -13,6 +13,7 @@ export default function handler(req: Request, res: Response) {
       ],
       prompt: "consent"
     });
+    console.log(`[AUTH] Generated URL: ${url}`);
     res.json({ url });
   } catch (error: any) {
     console.error("Error generating auth URL:", error);

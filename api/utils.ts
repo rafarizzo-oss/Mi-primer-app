@@ -2,8 +2,8 @@ import { Request } from 'express';
 import { google } from 'googleapis';
 
 export const getOAuth2Client = (req: Request) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
 
   if (!clientId || !clientSecret) {
     throw new Error("MISSING_CREDENTIALS: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is not defined in environment variables.");
@@ -29,8 +29,8 @@ export const getOAuth2Client = (req: Request) => {
   console.log(`[AUTH] RedirectURI: ${redirectUri}`);
 
   return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
+    clientId,
+    clientSecret,
     redirectUri
   );
 };

@@ -53,6 +53,10 @@ async function setupApp() {
     res.json({
       nodeEnv: process.env.NODE_ENV,
       isVercel: !!process.env.VERCEL,
+      hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+      hasAppUrl: !!process.env.APP_URL,
+      vercelUrl: process.env.VERCEL_URL,
       session: !!req.session,
       timestamp: new Date().toISOString()
     });

@@ -4,10 +4,13 @@ import { google } from 'googleapis';
 
 export default async function handler(req: Request, res: Response) {
   const { code } = req.query;
+  console.log(`[AUTH] Callback reached with code: ${code ? 'present' : 'missing'}`);
+  
   if (!code) return res.status(400).send("No code");
 
   const client = getOAuth2Client(req);
   try {
+    console.log(`[AUTH] Exchanging code for tokens...`);
     const { tokens } = await client.getToken(code as string);
     req.session.tokens = tokens;
     

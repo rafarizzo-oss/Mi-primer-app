@@ -63,10 +63,11 @@ export default function App() {
     const checkServer = async () => {
       try {
         const res = await fetch('/api/health');
+        if (!res.ok) throw new Error(`Status: ${res.status}`);
         const data = await res.json();
         console.log("Server Health:", data);
       } catch (e) {
-        console.error("Server unreachable:", e);
+        console.error("Server unreachable or error:", e);
       }
     };
     checkServer();
